@@ -18,6 +18,16 @@ def matches(path, pattern):
     return re.fullmatch(regex, path) is not None
 
 
+def triggers(path, patterns):
+    # In order: a later !pattern excludes a matched path, a later pattern includes it again.
+    included = False
+    for pattern in patterns:
+        negative = pattern.startswith("!")
+        if matches(path, pattern.removeprefix("!")):
+            included = not negative
+    return included
+
+
 class UnitTestTriggerTests(unittest.TestCase):
     def test_every_workflow_action_and_test_file_triggers_the_tests(self):
         files = [path.relative_to(ROOT).as_posix()
@@ -29,12 +39,14 @@ class UnitTestTriggerTests(unittest.TestCase):
             patterns = WORKFLOW["on"][event]["paths"]
             for file in files:
                 with self.subTest(event=event, file=file):
-                    self.assertTrue(any(matches(file, pattern) for pattern in patterns))
+                    self.assertTrue(triggers(file, patterns))
 
     def test_matches_follows_github_globs(self):
         self.assertTrue(matches("actions/ast-grep/action.yml", "actions/**"))
         self.assertFalse(matches("actions/ast-grep/action.yml", "actions/*"))
         self.assertTrue(matches(".github/workflows/nix.yml", ".github/workflows/*.yml"))
+        self.assertFalse(triggers("actions/ast-grep/action.yml", ["actions/**", "!actions/ast-grep/**"]))
+        self.assertTrue(triggers("actions/ast-grep/action.yml", ["actions/**", "!actions/**", "actions/ast-grep/*"]))
 
 
 if __name__ == "__main__":
